@@ -1,0 +1,886 @@
+import { useState, useEffect, useRef, createContext, useContext } from "react";
+
+/* ═══════════════════════════════════
+   N8N WEBHOOK CONFIGURATION
+   ═══════════════════════════════════ */
+const WEBHOOKS = {
+  registration: "https://yartanix.app.n8n.cloud/webhook/evently-registration",
+  quoteRequest: "https://yartanix.app.n8n.cloud/webhook/evently-quote-request",
+  eventStatus:  "https://yartanix.app.n8n.cloud/webhook/evently-event-status",
+};
+
+async function triggerWebhook(url, payload) {
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    console.warn("Webhook error:", e);
+  }
+}
+
+/* ═══════════════════════════════════
+   THEME
+   ═══════════════════════════════════ */
+const C = {
+  bg:        "#0a0a0f",
+  surface:   "#13131a",
+  surfaceHi: "#1c1c27",
+  border:    "#2a2a3a",
+  accent:    "#c9a84c",
+  accentDim: "#c9a84c18",
+  text:      "#f0efe8",
+  textMuted: "#7a7a95",
+  success:   "#4caf82",
+  error:     "#e05555",
+};
+
+const GS = `
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600&family=Noto+Kufi+Arabic:wght@400;500;600;700&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:${C.bg};color:${C.text};font-family:'DM Sans',sans-serif;min-height:100vh}
+  input,textarea,select{outline:none;font-family:inherit}
+  button{font-family:inherit;cursor:pointer;border:none}
+  ::-webkit-scrollbar{width:4px}
+  ::-webkit-scrollbar-track{background:${C.bg}}
+  ::-webkit-scrollbar-thumb{background:${C.border};border-radius:2px}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .fade-up{animation:fadeUp 0.5s ease forwards}
+`;
+
+/* ═══════════════════════════════════
+   LANG CONTEXT
+   ═══════════════════════════════════ */
+const LangCtx = createContext({ lang:"en", setLang:()=>{} });
+const useLang = () => useContext(LangCtx);
+const L = (obj, lang) => (typeof obj === "string" ? obj : (obj?.[lang] || obj?.en || ""));
+
+/* ═══════════════════════════════════
+   TRANSLATIONS
+   ═══════════════════════════════════ */
+const T = {
+  brandEn:"Evently", brandAr:"Evently",
+  tagline:{en:"Craft Unforgettable Moments",ar:"اصنع لحظات لا تُنسى"},
+  explore:{en:"Explore",ar:"استكشف"},
+  providers:{en:"Providers",ar:"مزودو الخدمات"},
+  createEvent:{en:"Create Event",ar:"إنشاء مناسبة"},
+  myEvents:{en:"My Events",ar:"مناسباتي"},
+  dashboard:{en:"Dashboard",ar:"لوحة التحكم"},
+  signIn:{en:"Sign In",ar:"تسجيل الدخول"},
+  createAccount:{en:"Create Account",ar:"إنشاء حساب"},
+  welcomeBack:{en:"Welcome Back",ar:"مرحباً بعودتك"},
+  signInSubtitle:{en:"Sign in to your Evently account",ar:"سجّل دخولك إلى حساب Evently"},
+  email:{en:"Email Address",ar:"البريد الإلكتروني"},
+  password:{en:"Password",ar:"كلمة المرور"},
+  forgotPassword:{en:"Forgot password?",ar:"نسيت كلمة المرور؟"},
+  noAccount:{en:"Don't have an account?",ar:"ليس لديك حساب؟"},
+  haveAccount:{en:"Already have an account?",ar:"لديك حساب بالفعل؟"},
+  joinEvently:{en:"Join Evently",ar:"انضم إلى Evently"},
+  chooseHow:{en:"Choose how you'd like to use Evently",ar:"اختر طريقة استخدامك لEvently"},
+  planningEvent:{en:"I'm planning an event",ar:"أريد تنظيم مناسبة"},
+  serviceProvider:{en:"I'm a service provider",ar:"أنا مزود خدمة"},
+  fullName:{en:"Full Name",ar:"الاسم الكامل"},
+  phone:{en:"Phone Number",ar:"رقم الهاتف"},
+  city:{en:"City",ar:"المدينة"},
+  confirmPassword:{en:"Confirm Password",ar:"تأكيد كلمة المرور"},
+  businessName:{en:"Business Name",ar:"اسم المنشأة"},
+  crNumber:{en:"CR Number",ar:"السجل التجاري"},
+  contactPerson:{en:"Contact Person",ar:"الشخص المسؤول"},
+  serviceTypes:{en:"Service Types",ar:"أنواع الخدمات"},
+  bio:{en:"Business Description",ar:"وصف المنشأة"},
+  next:{en:"Next",ar:"التالي"},
+  back:{en:"Back",ar:"رجوع"},
+  continueBtn:{en:"Continue",ar:"متابعة"},
+  submit:{en:"Submit",ar:"إرسال"},
+  createEventBtn:{en:"Create Event",ar:"إنشاء المناسبة"},
+  eventType:{en:"Event Type",ar:"نوع المناسبة"},
+  eventDate:{en:"Event Date",ar:"تاريخ المناسبة"},
+  guests:{en:"Number of Guests",ar:"عدد الضيوف"},
+  budget:{en:"Budget (SAR)",ar:"الميزانية (ريال)"},
+  notes:{en:"Additional Notes",ar:"ملاحظات إضافية"},
+  requestQuote:{en:"Request Quote",ar:"طلب عرض سعر"},
+  quoteSent:{en:"Quote request sent!",ar:"تم إرسال طلب عرض السعر!"},
+  signOut:{en:"Sign Out",ar:"تسجيل الخروج"},
+  loading:{en:"Sending...",ar:"جارٍ الإرسال..."},
+  successReg:{en:"Registration successful! Check your email.",ar:"تم التسجيل بنجاح! تحقق من بريدك الإلكتروني."},
+  errorReg:{en:"Registration failed. Please try again.",ar:"فشل التسجيل. يرجى المحاولة مجدداً."},
+};
+
+/* ═══════════════════════════════════
+   SHARED COMPONENTS
+   ═══════════════════════════════════ */
+const Input = ({ label, value, onChange, type="text", placeholder, icon, error, dir }) => (
+  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+    {label && <label style={{ fontSize:12, color:C.textMuted, fontWeight:500, letterSpacing:"0.05em", textTransform:"uppercase" }}>{label}</label>}
+    <div style={{ position:"relative" }}>
+      {icon && <span style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", fontSize:16 }}>{icon}</span>}
+      <input
+        type={type} value={value} onChange={onChange} placeholder={placeholder} dir={dir}
+        style={{
+          width:"100%", padding: icon ? "12px 14px 12px 42px" : "12px 16px",
+          background:C.surfaceHi, border:`1px solid ${error ? C.error : C.border}`,
+          borderRadius:10, color:C.text, fontSize:14,
+          transition:"border 0.2s",
+        }}
+        onFocus={e=>e.target.style.borderColor=C.accent}
+        onBlur={e=>e.target.style.borderColor=error?C.error:C.border}
+      />
+    </div>
+    {error && <span style={{ fontSize:11, color:C.error }}>{error}</span>}
+  </div>
+);
+
+const Btn = ({ children, onClick, variant="primary", disabled, loading, style:s={} }) => (
+  <button onClick={onClick} disabled={disabled||loading}
+    style={{
+      padding:"13px 28px", borderRadius:12, fontWeight:600, fontSize:14,
+      transition:"all 0.2s", letterSpacing:"0.02em",
+      background: variant==="primary" ? C.accent : "transparent",
+      color: variant==="primary" ? "#0a0a0f" : C.textMuted,
+      border: variant==="ghost" ? `1px solid ${C.border}` : "none",
+      opacity: disabled||loading ? 0.6 : 1,
+      cursor: disabled||loading ? "not-allowed" : "pointer",
+      ...s
+    }}>
+    {loading ? "⏳ " : ""}{children}
+  </button>
+);
+
+const Toast = ({ msg, type="success" }) => (
+  <div style={{
+    position:"fixed", bottom:28, left:"50%", transform:"translateX(-50%)",
+    background: type==="success" ? C.success : C.error,
+    color:"#fff", padding:"12px 24px", borderRadius:12, fontWeight:600,
+    fontSize:14, zIndex:9999, animation:"fadeUp 0.3s ease",
+    boxShadow:"0 8px 32px rgba(0,0,0,0.4)"
+  }}>{msg}</div>
+);
+
+/* ═══════════════════════════════════
+   DATA
+   ═══════════════════════════════════ */
+const CITIES = ["Riyadh / الرياض","Jeddah / جدة","Dammam / الدمام","Mecca / مكة","Medina / المدينة","Khobar / الخبر","Tabuk / تبوك","Abha / أبها"];
+const SERVICE_TYPES = ["Catering / تموين","Photography / تصوير","Videography / فيديو","Decoration / ديكور","Venue / قاعة","Entertainment / ترفيه","Bakery / مخبوزات","Flowers / أزهار","Lighting / إضاءة","Sound / صوتيات","Security / أمن","Transportation / نقل"];
+const EVENT_TYPES = [{icon:"💍",en:"Wedding",ar:"زواج"},{icon:"🏢",en:"Corporate",ar:"شركات"},{icon:"🎂",en:"Birthday",ar:"عيد ميلاد"},{icon:"🎓",en:"Graduation",ar:"تخرج"},{icon:"🎉",en:"Party",ar:"حفلة"},{icon:"📋",en:"Conference",ar:"مؤتمر"},{icon:"🌿",en:"Engagement",ar:"خطوبة"},{icon:"🎪",en:"Other",ar:"أخرى"}];
+
+const PROVIDERS = [
+  {id:1,name:"Azure Palace Venue",type:"Venue",rating:4.9,reviews:312,price:"$$$",avatar:"🏛️",tags:["Ballroom","Outdoor","Capacity 500+"],featured:true,location:"Riyadh",email:"azure@venue.com",phone:"+966501234001"},
+  {id:2,name:"Golden Lens Studio",type:"Photography",rating:4.8,reviews:267,price:"$$",avatar:"📸",tags:["Wedding","Editorial","Drone"],featured:true,location:"Jeddah",email:"golden@lens.com",phone:"+966501234002"},
+  {id:3,name:"Saffron Catering Co.",type:"Catering",rating:4.7,reviews:198,price:"$$",avatar:"🍽️",tags:["Arabic Cuisine","Buffet","Live Stations"],featured:false,location:"Riyadh",email:"saffron@catering.com",phone:"+966501234003"},
+  {id:4,name:"Bloom Florists",type:"Flowers",rating:4.9,reviews:445,price:"$$",avatar:"💐",tags:["Bridal","Table Settings","Arch"],featured:true,location:"Dammam",email:"bloom@florists.com",phone:"+966501234004"},
+  {id:5,name:"SoundWave Entertainment",type:"Entertainment",rating:4.6,reviews:134,price:"$$$",avatar:"🎵",tags:["DJ","Live Band","MC"],featured:false,location:"Dammam",email:"sound@wave.com",phone:"+966501234005"},
+  {id:6,name:"Sweet Creations Bakery",type:"Bakery",rating:4.8,reviews:221,price:"$$",avatar:"🎂",tags:["Custom Cakes","Dessert Bar","Pastries"],featured:false,location:"Riyadh",email:"sweet@creations.com",phone:"+966501234006"},
+  {id:7,name:"Royal Tent Rentals",type:"Decoration",rating:4.5,reviews:176,price:"$$$",avatar:"⛺",tags:["Tents","Furniture","Lighting"],featured:false,location:"Riyadh",email:"royal@tent.com",phone:"+966501234007"},
+  {id:8,name:"Pixel Perfect Video",type:"Videography",rating:4.9,reviews:189,price:"$$$",avatar:"🎬",tags:["4K","Highlights","Livestream"],featured:true,location:"Jeddah",email:"pixel@perfect.com",phone:"+966501234008"},
+];
+
+const MY_EVENTS = [
+  {id:1,name:"Al-Rashidi Wedding",type:"Wedding",date:"2026-08-15",status:"Contracts Signed",progress:60,icon:"💍"},
+  {id:2,name:"TechCorp Conference",type:"Corporate",date:"2026-07-20",status:"Planning Phase",progress:40,icon:"🏢"},
+];
+
+/* ═══════════════════════════════════
+   AUTH SCREENS
+   ═══════════════════════════════════ */
+function WelcomeScreen({ onSignIn, onRegister }) {
+  const { lang } = useLang();
+  return (
+    <div style={{ minHeight:"100vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:24, background:`radial-gradient(ellipse at 50% 0%, ${C.accentDim} 0%, ${C.bg} 60%)` }}>
+      <div style={{ textAlign:"center", marginBottom:48, animation:"fadeUp 0.6s ease" }}>
+        <div style={{ fontSize:56, fontFamily:"'Cormorant Garamond',serif", fontWeight:700, color:C.accent, lineHeight:1 }}>
+          {T.brandEn} <span style={{ fontFamily:"'Noto Kufi Arabic',sans-serif" }}>{T.brandAr}</span>
+        </div>
+        <div style={{ fontSize:15, color:C.textMuted, marginTop:10 }}>{L(T.tagline,lang)}</div>
+      </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:14, width:"100%", maxWidth:360 }}>
+        <Btn onClick={onSignIn} style={{ width:"100%", padding:"16px" }}>{L(T.signIn,lang)}</Btn>
+        <Btn onClick={onRegister} variant="ghost" style={{ width:"100%", padding:"16px" }}>{L(T.createAccount,lang)}</Btn>
+      </div>
+    </div>
+  );
+}
+
+function SignInScreen({ onBack, onSuccess }) {
+  const { lang } = useLang();
+  const [email,setEmail] = useState("");
+  const [pass,setPass] = useState("");
+  const [loading,setLoading] = useState(false);
+
+  const handle = async () => {
+    setLoading(true);
+    await new Promise(r=>setTimeout(r,600));
+    setLoading(false);
+    onSuccess({ name:"Demo User", email, role:"user" });
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+      <div style={{ width:"100%", maxWidth:420, animation:"fadeUp 0.5s ease" }}>
+        <button onClick={onBack} style={{ background:"none", color:C.textMuted, fontSize:13, marginBottom:32, padding:0 }}>← {L(T.back,lang)}</button>
+        <div style={{ fontSize:32, fontFamily:"'Cormorant Garamond',serif", fontWeight:700, marginBottom:6 }}>{L(T.welcomeBack,lang)}</div>
+        <div style={{ fontSize:14, color:C.textMuted, marginBottom:32 }}>{L(T.signInSubtitle,lang)}</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          <Input label={L(T.email,lang)} value={email} onChange={e=>setEmail(e.target.value)} type="email" icon="✉️" />
+          <Input label={L(T.password,lang)} value={pass} onChange={e=>setPass(e.target.value)} type="password" icon="🔒" />
+          <div style={{ textAlign:"right" }}><span style={{ fontSize:12, color:C.accent, cursor:"pointer" }}>{L(T.forgotPassword,lang)}</span></div>
+          <Btn onClick={handle} loading={loading} style={{ width:"100%", marginTop:8, padding:"15px" }}>{L(T.signIn,lang)}</Btn>
+          <div style={{ textAlign:"center", fontSize:13, color:C.textMuted }}>
+            {L(T.noAccount,lang)} <span onClick={onBack} style={{ color:C.accent, cursor:"pointer" }}>{L(T.register,lang)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RoleSelectScreen({ onBack, onSelect }) {
+  const { lang } = useLang();
+  return (
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+      <div style={{ width:"100%", maxWidth:520, animation:"fadeUp 0.5s ease" }}>
+        <button onClick={onBack} style={{ background:"none", color:C.textMuted, fontSize:13, marginBottom:32, padding:0 }}>← {L(T.back,lang)}</button>
+        <div style={{ fontSize:32, fontFamily:"'Cormorant Garamond',serif", fontWeight:700, marginBottom:6 }}>{L(T.joinEvently,lang)}</div>
+        <div style={{ fontSize:14, color:C.textMuted, marginBottom:32 }}>{L(T.chooseHow,lang)}</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          {[
+            { role:"user", icon:"🎉", title:T.planningEvent, desc:{en:"Browse providers, create events & manage celebrations end-to-end.",ar:"تصفح مزودي الخدمات، أنشئ المناسبات وأدرها من البداية إلى النهاية."} },
+            { role:"supplier", icon:"🏢", title:T.serviceProvider, desc:{en:"Showcase services, receive bookings & grow your business.",ar:"اعرض خدماتك، استقبل الحجوزات ونمّي أعمالك."} },
+          ].map(item => (
+            <div key={item.role} onClick={()=>onSelect(item.role)}
+              style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:24, cursor:"pointer", transition:"all 0.2s", display:"flex", gap:18, alignItems:"center" }}
+              onMouseEnter={e=>{ e.currentTarget.style.borderColor=C.accent; e.currentTarget.style.background=C.accentDim; }}
+              onMouseLeave={e=>{ e.currentTarget.style.borderColor=C.border; e.currentTarget.style.background=C.surface; }}>
+              <div style={{ fontSize:36 }}>{item.icon}</div>
+              <div>
+                <div style={{ fontWeight:600, fontSize:16, marginBottom:4 }}>{L(item.title,lang)}</div>
+                <div style={{ fontSize:13, color:C.textMuted }}>{L(item.desc,lang)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UserRegisterScreen({ onBack, onSuccess }) {
+  const { lang } = useLang();
+  const [step,setStep] = useState(1);
+  const [form,setForm] = useState({ name:"", email:"", phone:"", city:"", password:"", confirm:"" });
+  const [loading,setLoading] = useState(false);
+  const [toast,setToast] = useState(null);
+  const u = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const submit = async () => {
+    setLoading(true);
+    await triggerWebhook(WEBHOOKS.registration, {
+      name: form.name, email: form.email, phone: form.phone,
+      city: form.city, role: "user",
+      registeredAt: new Date().toISOString(),
+    });
+    setLoading(false);
+    setToast({ msg: L(T.successReg, lang), type:"success" });
+    setTimeout(() => onSuccess({ name:form.name, email:form.email, role:"user", city:form.city }), 1500);
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+      {toast && <Toast msg={toast.msg} type={toast.type} />}
+      <div style={{ width:"100%", maxWidth:440, animation:"fadeUp 0.5s ease" }}>
+        <button onClick={onBack} style={{ background:"none", color:C.textMuted, fontSize:13, marginBottom:24, padding:0 }}>← {L(T.back,lang)}</button>
+        {/* Step indicator */}
+        <div style={{ display:"flex", gap:8, marginBottom:28 }}>
+          {[1,2].map(s=>(
+            <div key={s} style={{ flex:1, height:3, borderRadius:2, background: s<=step ? C.accent : C.border, transition:"background 0.3s" }} />
+          ))}
+        </div>
+        <div style={{ fontSize:26, fontFamily:"'Cormorant Garamond',serif", fontWeight:700, marginBottom:24 }}>
+          {step===1 ? L({en:"Account Details",ar:"بيانات الحساب"},lang) : L({en:"Personal Info",ar:"المعلومات الشخصية"},lang)}
+        </div>
+        {step===1 ? (
+          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+            <Input label={L(T.email,lang)} value={form.email} onChange={e=>u("email",e.target.value)} type="email" icon="✉️" />
+            <Input label={L(T.password,lang)} value={form.password} onChange={e=>u("password",e.target.value)} type="password" icon="🔒" />
+            <Input label={L(T.confirmPassword,lang)} value={form.confirm} onChange={e=>u("confirm",e.target.value)} type="password" icon="🔒" />
+            <Btn onClick={()=>setStep(2)} style={{ width:"100%", marginTop:8, padding:"15px" }}>{L(T.next,lang)}</Btn>
+          </div>
+        ) : (
+          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+            <Input label={L(T.fullName,lang)} value={form.name} onChange={e=>u("name",e.target.value)} icon="👤" />
+            <Input label={L(T.phone,lang)} value={form.phone} onChange={e=>u("phone",e.target.value)} icon="📱" />
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              <label style={{ fontSize:12, color:C.textMuted, fontWeight:500, letterSpacing:"0.05em", textTransform:"uppercase" }}>{L(T.city,lang)}</label>
+              <select value={form.city} onChange={e=>u("city",e.target.value)}
+                style={{ padding:"12px 16px", background:C.surfaceHi, border:`1px solid ${C.border}`, borderRadius:10, color:form.city?C.text:C.textMuted, fontSize:14 }}>
+                <option value="">{L({en:"Select city",ar:"اختر المدينة"},lang)}</option>
+                {CITIES.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <Btn onClick={submit} loading={loading} style={{ width:"100%", marginTop:8, padding:"15px" }}>{L(T.createAccount,lang)}</Btn>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SupplierRegisterScreen({ onBack, onSuccess }) {
+  const { lang } = useLang();
+  const [step,setStep] = useState(1);
+  const [form,setForm] = useState({ businessName:"", crNumber:"", contactPerson:"", phone:"", city:"", serviceTypes:[], bio:"", email:"", password:"", confirm:"" });
+  const [loading,setLoading] = useState(false);
+  const [toast,setToast] = useState(null);
+  const u = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const toggleService = (s) => {
+    setForm(f=>({ ...f, serviceTypes: f.serviceTypes.includes(s) ? f.serviceTypes.filter(x=>x!==s) : [...f.serviceTypes,s] }));
+  };
+
+  const submit = async () => {
+    setLoading(true);
+    await triggerWebhook(WEBHOOKS.registration, {
+      name: form.contactPerson, email: form.email, phone: form.phone,
+      city: form.city, role: "supplier",
+      businessName: form.businessName, crNumber: form.crNumber,
+      serviceTypes: form.serviceTypes.join(", "),
+      registeredAt: new Date().toISOString(),
+    });
+    setLoading(false);
+    setToast({ msg: L(T.successReg, lang), type:"success" });
+    setTimeout(() => onSuccess({ name:form.contactPerson, email:form.email, role:"supplier", businessName:form.businessName, city:form.city }), 1500);
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:24, overflowY:"auto" }}>
+      {toast && <Toast msg={toast.msg} type={toast.type} />}
+      <div style={{ width:"100%", maxWidth:500, animation:"fadeUp 0.5s ease", paddingTop:24, paddingBottom:24 }}>
+        <button onClick={onBack} style={{ background:"none", color:C.textMuted, fontSize:13, marginBottom:24, padding:0 }}>← {L(T.back,lang)}</button>
+        <div style={{ display:"flex", gap:8, marginBottom:28 }}>
+          {[1,2,3].map(s=>(
+            <div key={s} style={{ flex:1, height:3, borderRadius:2, background: s<=step ? C.accent : C.border, transition:"background 0.3s" }} />
+          ))}
+        </div>
+        <div style={{ fontSize:26, fontFamily:"'Cormorant Garamond',serif", fontWeight:700, marginBottom:24 }}>
+          {step===1 ? L({en:"Business Info",ar:"معلومات المنشأة"},lang) : step===2 ? L({en:"Services",ar:"الخدمات"},lang) : L({en:"Account Setup",ar:"إعداد الحساب"},lang)}
+        </div>
+
+        {step===1 && (
+          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+            <Input label={L(T.businessName,lang)} value={form.businessName} onChange={e=>u("businessName",e.target.value)} icon="🏢" />
+            <Input label={L(T.crNumber,lang)} value={form.crNumber} onChange={e=>u("crNumber",e.target.value)} icon="📋" />
+            <Input label={L(T.contactPerson,lang)} value={form.contactPerson} onChange={e=>u("contactPerson",e.target.value)} icon="👤" />
+            <Input label={L(T.phone,lang)} value={form.phone} onChange={e=>u("phone",e.target.value)} icon="📱" />
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              <label style={{ fontSize:12, color:C.textMuted, fontWeight:500, letterSpacing:"0.05em", textTransform:"uppercase" }}>{L(T.city,lang)}</label>
+              <select value={form.city} onChange={e=>u("city",e.target.value)}
+                style={{ padding:"12px 16px", background:C.surfaceHi, border:`1px solid ${C.border}`, borderRadius:10, color:form.city?C.text:C.textMuted, fontSize:14 }}>
+                <option value="">{L({en:"Select city",ar:"اختر المدينة"},lang)}</option>
+                {CITIES.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <Btn onClick={()=>setStep(2)} style={{ width:"100%", marginTop:8, padding:"15px" }}>{L(T.next,lang)}</Btn>
+          </div>
+        )}
+
+        {step===2 && (
+          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+            <div>
+              <label style={{ fontSize:12, color:C.textMuted, fontWeight:500, letterSpacing:"0.05em", textTransform:"uppercase", display:"block", marginBottom:10 }}>{L(T.serviceTypes,lang)}</label>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                {SERVICE_TYPES.map(s=>{
+                  const sel = form.serviceTypes.includes(s);
+                  return (
+                    <div key={s} onClick={()=>toggleService(s)}
+                      style={{ padding:"7px 14px", borderRadius:20, fontSize:12, fontWeight:500, cursor:"pointer", transition:"all 0.2s",
+                        background: sel ? C.accent : C.surfaceHi,
+                        color: sel ? "#0a0a0f" : C.textMuted,
+                        border:`1px solid ${sel ? C.accent : C.border}` }}>
+                      {s}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              <label style={{ fontSize:12, color:C.textMuted, fontWeight:500, letterSpacing:"0.05em", textTransform:"uppercase" }}>{L(T.bio,lang)}</label>
+              <textarea value={form.bio} onChange={e=>u("bio",e.target.value)} rows={4}
+                style={{ padding:"12px 16px", background:C.surfaceHi, border:`1px solid ${C.border}`, borderRadius:10, color:C.text, fontSize:14, resize:"vertical" }} />
+            </div>
+            <div style={{ display:"flex", gap:12 }}>
+              <Btn onClick={()=>setStep(1)} variant="ghost" style={{ flex:1, padding:"15px" }}>{L(T.back,lang)}</Btn>
+              <Btn onClick={()=>setStep(3)} style={{ flex:2, padding:"15px" }}>{L(T.next,lang)}</Btn>
+            </div>
+          </div>
+        )}
+
+        {step===3 && (
+          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+            <Input label={L(T.email,lang)} value={form.email} onChange={e=>u("email",e.target.value)} type="email" icon="✉️" />
+            <Input label={L(T.password,lang)} value={form.password} onChange={e=>u("password",e.target.value)} type="password" icon="🔒" />
+            <Input label={L(T.confirmPassword,lang)} value={form.confirm} onChange={e=>u("confirm",e.target.value)} type="password" icon="🔒" />
+            <div style={{ display:"flex", gap:12, marginTop:8 }}>
+              <Btn onClick={()=>setStep(2)} variant="ghost" style={{ flex:1, padding:"15px" }}>{L(T.back,lang)}</Btn>
+              <Btn onClick={submit} loading={loading} style={{ flex:2, padding:"15px" }}>{L(T.createAccount,lang)}</Btn>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════
+   MAIN APP PAGES
+   ═══════════════════════════════════ */
+function HomePage({ setPage, setSelectedProvider }) {
+  const { lang } = useLang();
+  const [search,setSearch] = useState("");
+  const filtered = PROVIDERS.filter(p =>
+    !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.type.toLowerCase().includes(search.toLowerCase())
+  );
+  return (
+    <div style={{ padding:"0 32px 60px" }}>
+      {/* Hero */}
+      <div style={{ textAlign:"center", padding:"80px 0 56px", background:`radial-gradient(ellipse at 50% -20%, ${C.accentDim} 0%, transparent 70%)` }}>
+        <div style={{ fontSize:56, fontFamily:"'Cormorant Garamond',serif", fontWeight:700, lineHeight:1.1, marginBottom:16 }}>
+          {L({en:"Your Event,",ar:"مناسبتك،"},lang)}<br/>
+          <span style={{ color:C.accent }}>{L({en:"Perfected",ar:"بإتقان"},lang)}</span>
+        </div>
+        <div style={{ fontSize:16, color:C.textMuted, maxWidth:480, margin:"0 auto 36px" }}>
+          {L({en:"Connect with premium providers and plan every detail — from concept to celebration.",ar:"تواصل مع أفضل مزودي الخدمات وخطّط لكل تفصيلة."},lang)}
+        </div>
+        <div style={{ position:"relative", maxWidth:520, margin:"0 auto" }}>
+          <span style={{ position:"absolute", left:18, top:"50%", transform:"translateY(-50%)", fontSize:18 }}>🔍</span>
+          <input value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder={L({en:"Search venues, caterers, photographers...",ar:"ابحث عن قاعات، تموين، مصورين..."},lang)}
+            style={{ width:"100%", padding:"16px 18px 16px 52px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, color:C.text, fontSize:15 }} />
+        </div>
+      </div>
+
+      {/* Categories */}
+      <div style={{ marginBottom:48 }}>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:10, justifyContent:"center" }}>
+          {EVENT_TYPES.map(e=>(
+            <div key={e.en} style={{ padding:"10px 20px", background:C.surface, border:`1px solid ${C.border}`, borderRadius:24, fontSize:13, fontWeight:500, cursor:"pointer", transition:"all 0.2s", display:"flex", alignItems:"center", gap:8 }}
+              onMouseEnter={e2=>{e2.currentTarget.style.borderColor=C.accent;e2.currentTarget.style.color=C.accent;}}
+              onMouseLeave={e2=>{e2.currentTarget.style.borderColor=C.border;e2.currentTarget.style.color=C.text;}}>
+              <span>{e.icon}</span><span>{lang==="ar"?e.ar:e.en}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Providers Grid */}
+      <div style={{ fontSize:22, fontFamily:"'Cormorant Garamond',serif", fontWeight:700, marginBottom:24 }}>
+        {L({en:"Featured Providers",ar:"مزودو الخدمات المميزون"},lang)}
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:20 }}>
+        {filtered.map(p=>(
+          <div key={p.id} onClick={()=>{setSelectedProvider(p);setPage("provider-detail");}}
+            style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:20, cursor:"pointer", transition:"all 0.2s" }}
+            onMouseEnter={e=>{e.currentTarget.style.borderColor=C.accent;e.currentTarget.style.transform="translateY(-2px)";}}
+            onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform="none";}}>
+            <div style={{ fontSize:36, marginBottom:12 }}>{p.avatar}</div>
+            <div style={{ fontWeight:600, fontSize:16, marginBottom:4 }}>{p.name}</div>
+            <div style={{ fontSize:12, color:C.accent, marginBottom:8 }}>{p.type} · {p.location}</div>
+            <div style={{ fontSize:13, color:C.textMuted, marginBottom:12 }}>⭐ {p.rating} ({p.reviews}) · {p.price}</div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+              {p.tags.map(t=>(
+                <span key={t} style={{ padding:"3px 10px", background:C.surfaceHi, borderRadius:12, fontSize:11, color:C.textMuted }}>{t}</span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProviderDetailPage({ provider, setPage, user }) {
+  const { lang } = useLang();
+  const [loading,setLoading] = useState(false);
+  const [toast,setToast] = useState(null);
+  const [form,setForm] = useState({ eventType:"", eventDate:"", guestCount:"", budget:"", message:"" });
+  const u = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const sendQuote = async () => {
+    setLoading(true);
+    await triggerWebhook(WEBHOOKS.quoteRequest, {
+      userName: user?.name || "Guest",
+      userEmail: user?.email || "",
+      userPhone: user?.phone || "",
+      supplierName: provider.name,
+      supplierEmail: provider.email,
+      supplierPhone: provider.phone,
+      eventType: form.eventType,
+      eventDate: form.eventDate,
+      guestCount: form.guestCount,
+      budget: form.budget,
+      message: form.message,
+      requestedAt: new Date().toISOString(),
+    });
+    setLoading(false);
+    setToast({ msg: L(T.quoteSent, lang), type:"success" });
+    setTimeout(()=>setToast(null), 3000);
+  };
+
+  if (!provider) return null;
+  return (
+    <div style={{ padding:"32px", maxWidth:800, margin:"0 auto" }}>
+      {toast && <Toast msg={toast.msg} type={toast.type} />}
+      <button onClick={()=>setPage("providers")} style={{ background:"none", color:C.textMuted, fontSize:13, marginBottom:24, padding:0 }}>← {L(T.back,lang)}</button>
+      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:20, padding:32, marginBottom:24 }}>
+        <div style={{ display:"flex", gap:20, alignItems:"center", marginBottom:20 }}>
+          <div style={{ fontSize:56 }}>{provider.avatar}</div>
+          <div>
+            <div style={{ fontSize:28, fontFamily:"'Cormorant Garamond',serif", fontWeight:700 }}>{provider.name}</div>
+            <div style={{ color:C.accent, fontSize:14 }}>{provider.type} · {provider.location}</div>
+            <div style={{ color:C.textMuted, fontSize:13, marginTop:4 }}>⭐ {provider.rating} ({provider.reviews} reviews) · {provider.price}</div>
+          </div>
+        </div>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+          {provider.tags.map(t=>(
+            <span key={t} style={{ padding:"5px 14px", background:C.accentDim, border:`1px solid ${C.accent}40`, borderRadius:14, fontSize:12, color:C.accent }}>{t}</span>
+          ))}
+        </div>
+      </div>
+
+      {/* Quote Request Form */}
+      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:20, padding:32 }}>
+        <div style={{ fontSize:20, fontFamily:"'Cormorant Garamond',serif", fontWeight:700, marginBottom:24 }}>
+          {L(T.requestQuote,lang)}
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:16 }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            <label style={{ fontSize:12, color:C.textMuted, fontWeight:500, letterSpacing:"0.05em", textTransform:"uppercase" }}>{L(T.eventType,lang)}</label>
+            <select value={form.eventType} onChange={e=>u("eventType",e.target.value)}
+              style={{ padding:"12px 16px", background:C.surfaceHi, border:`1px solid ${C.border}`, borderRadius:10, color:form.eventType?C.text:C.textMuted, fontSize:14 }}>
+              <option value="">{L({en:"Select",ar:"اختر"},lang)}</option>
+              {EVENT_TYPES.map(e=><option key={e.en} value={e.en}>{lang==="ar"?e.ar:e.en}</option>)}
+            </select>
+          </div>
+          <Input label={L(T.eventDate,lang)} value={form.eventDate} onChange={e=>u("eventDate",e.target.value)} type="date" />
+          <Input label={L(T.guests,lang)} value={form.guestCount} onChange={e=>u("guestCount",e.target.value)} icon="👥" />
+          <Input label={L(T.budget,lang)} value={form.budget} onChange={e=>u("budget",e.target.value)} icon="💰" />
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:20 }}>
+          <label style={{ fontSize:12, color:C.textMuted, fontWeight:500, letterSpacing:"0.05em", textTransform:"uppercase" }}>{L(T.notes,lang)}</label>
+          <textarea value={form.message} onChange={e=>u("message",e.target.value)} rows={3}
+            style={{ padding:"12px 16px", background:C.surfaceHi, border:`1px solid ${C.border}`, borderRadius:10, color:C.text, fontSize:14, resize:"vertical" }} />
+        </div>
+        <Btn onClick={sendQuote} loading={loading} style={{ width:"100%", padding:"15px" }}>{L(T.requestQuote,lang)}</Btn>
+      </div>
+    </div>
+  );
+}
+
+function CreateEventPage({ setPage, user }) {
+  const { lang } = useLang();
+  const [step,setStep] = useState(1);
+  const [form,setForm] = useState({ eventType:"", eventName:"", date:"", guests:"", budget:"", notes:"" });
+  const [loading,setLoading] = useState(false);
+  const [toast,setToast] = useState(null);
+  const u = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const create = async () => {
+    setLoading(true);
+    await triggerWebhook(WEBHOOKS.eventStatus, {
+      userName: user?.name || "Guest",
+      userEmail: user?.email || "",
+      userPhone: user?.phone || "",
+      eventName: form.eventName,
+      eventType: form.eventType,
+      eventDate: form.date,
+      previousStatus: "None",
+      newStatus: "Event Created",
+      notes: form.notes,
+      updatedAt: new Date().toISOString(),
+    });
+    setLoading(false);
+    setToast({ msg: L({en:"Event created successfully!",ar:"تم إنشاء المناسبة بنجاح!"},lang), type:"success" });
+    setTimeout(()=>setPage("my-events"), 1500);
+  };
+
+  return (
+    <div style={{ padding:32, maxWidth:600, margin:"0 auto" }}>
+      {toast && <Toast msg={toast.msg} type={toast.type} />}
+      <div style={{ fontSize:28, fontFamily:"'Cormorant Garamond',serif", fontWeight:700, marginBottom:8 }}>{L(T.createEvent,lang)}</div>
+      <div style={{ display:"flex", gap:8, marginBottom:32 }}>
+        {[1,2,3].map(s=>(
+          <div key={s} style={{ flex:1, height:3, borderRadius:2, background:s<=step?C.accent:C.border, transition:"background 0.3s" }} />
+        ))}
+      </div>
+
+      {step===1 && (
+        <div>
+          <div style={{ fontSize:16, fontWeight:600, marginBottom:16 }}>{L({en:"What type of event?",ar:"ما نوع المناسبة؟"},lang)}</div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:24 }}>
+            {EVENT_TYPES.map(e=>(
+              <div key={e.en} onClick={()=>u("eventType",e.en)}
+                style={{ padding:"16px 8px", background: form.eventType===e.en ? C.accentDim : C.surface,
+                  border:`1px solid ${form.eventType===e.en ? C.accent : C.border}`, borderRadius:12, textAlign:"center", cursor:"pointer", transition:"all 0.2s" }}>
+                <div style={{ fontSize:24, marginBottom:6 }}>{e.icon}</div>
+                <div style={{ fontSize:11, fontWeight:500 }}>{lang==="ar"?e.ar:e.en}</div>
+              </div>
+            ))}
+          </div>
+          <Btn onClick={()=>setStep(2)} disabled={!form.eventType} style={{ width:"100%", padding:"15px" }}>{L(T.next,lang)}</Btn>
+        </div>
+      )}
+
+      {step===2 && (
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          <Input label={L({en:"Event Name",ar:"اسم المناسبة"},lang)} value={form.eventName} onChange={e=>u("eventName",e.target.value)} icon="✨" />
+          <Input label={L(T.eventDate,lang)} value={form.date} onChange={e=>u("date",e.target.value)} type="date" />
+          <Input label={L(T.guests,lang)} value={form.guests} onChange={e=>u("guests",e.target.value)} icon="👥" placeholder={L({en:"e.g. 200",ar:"مثال: ٢٠٠"},lang)} />
+          <Input label={L(T.budget,lang)} value={form.budget} onChange={e=>u("budget",e.target.value)} icon="💰" placeholder={L({en:"e.g. 150,000",ar:"مثال: ١٥٠,٠٠٠"},lang)} />
+          <div style={{ display:"flex", gap:12 }}>
+            <Btn onClick={()=>setStep(1)} variant="ghost" style={{ flex:1, padding:"15px" }}>{L(T.back,lang)}</Btn>
+            <Btn onClick={()=>setStep(3)} style={{ flex:2, padding:"15px" }}>{L(T.next,lang)}</Btn>
+          </div>
+        </div>
+      )}
+
+      {step===3 && (
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            <label style={{ fontSize:12, color:C.textMuted, fontWeight:500, letterSpacing:"0.05em", textTransform:"uppercase" }}>{L(T.notes,lang)}</label>
+            <textarea value={form.notes} onChange={e=>u("notes",e.target.value)} rows={4}
+              placeholder={L({en:"Any special requirements...",ar:"أي متطلبات خاصة..."},lang)}
+              style={{ padding:"12px 16px", background:C.surfaceHi, border:`1px solid ${C.border}`, borderRadius:10, color:C.text, fontSize:14, resize:"vertical" }} />
+          </div>
+          {/* Summary */}
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:20 }}>
+            <div style={{ fontSize:13, fontWeight:600, marginBottom:12, color:C.textMuted }}>{L({en:"Event Summary",ar:"ملخص المناسبة"},lang)}</div>
+            {[["Type",form.eventType],["Date",form.date],["Guests",form.guests],["Budget",form.budget+" SAR"]].map(([k,v])=>v?(
+              <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:`1px solid ${C.border}` }}>
+                <span style={{ fontSize:12, color:C.textMuted }}>{k}</span>
+                <span style={{ fontSize:13, fontWeight:500 }}>{v}</span>
+              </div>
+            ):null)}
+          </div>
+          <div style={{ display:"flex", gap:12 }}>
+            <Btn onClick={()=>setStep(2)} variant="ghost" style={{ flex:1, padding:"15px" }}>{L(T.back,lang)}</Btn>
+            <Btn onClick={create} loading={loading} style={{ flex:2, padding:"15px" }}>{L(T.createEventBtn,lang)}</Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MyEventsPage({ setPage }) {
+  const { lang } = useLang();
+  return (
+    <div style={{ padding:32, maxWidth:700, margin:"0 auto" }}>
+      <div style={{ fontSize:28, fontFamily:"'Cormorant Garamond',serif", fontWeight:700, marginBottom:8 }}>{L(T.myEvents,lang)}</div>
+      <div style={{ color:C.textMuted, fontSize:14, marginBottom:28 }}>{L({en:"Track and manage your events",ar:"تتبع مناسباتك وأدرها"},lang)}</div>
+      <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+        {MY_EVENTS.map(ev=>(
+          <div key={ev.id} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:24, display:"flex", alignItems:"center", gap:20 }}>
+            <div style={{ fontSize:40 }}>{ev.icon}</div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:600, fontSize:17, marginBottom:4 }}>{ev.name}</div>
+              <div style={{ fontSize:13, color:C.textMuted, marginBottom:8 }}>{ev.type} · {ev.date}</div>
+              <div style={{ fontSize:12, color:C.accent, marginBottom:10 }}>{ev.status}</div>
+              <div style={{ background:C.surfaceHi, borderRadius:4, height:6, overflow:"hidden" }}>
+                <div style={{ width:`${ev.progress}%`, height:"100%", background:C.accent, borderRadius:4, transition:"width 0.5s ease" }} />
+              </div>
+            </div>
+            <div style={{ fontSize:13, fontWeight:600, color:C.textMuted }}>{ev.progress}%</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop:24 }}>
+        <Btn onClick={()=>setPage("create")} style={{ padding:"14px 28px" }}>+ {L(T.createEvent,lang)}</Btn>
+      </div>
+    </div>
+  );
+}
+
+function SupplierDashboard({ user }) {
+  const { lang } = useLang();
+  const stats = [
+    {icon:"📋", value:"12", label:{en:"Active Quotes",ar:"عروض نشطة"}},
+    {icon:"✅", value:"8",  label:{en:"Confirmed Bookings",ar:"حجوزات مؤكدة"}},
+    {icon:"💰", value:"SAR 45K", label:{en:"Monthly Revenue",ar:"الإيراد الشهري"}},
+    {icon:"⭐", value:"4.9", label:{en:"Avg. Rating",ar:"متوسط التقييم"}},
+  ];
+  return (
+    <div style={{ padding:32, maxWidth:800, margin:"0 auto" }}>
+      <div style={{ fontSize:28, fontFamily:"'Cormorant Garamond',serif", fontWeight:700, marginBottom:4 }}>
+        {L({en:"Welcome back,",ar:"مرحباً،"},lang)} {user?.businessName || user?.name}
+      </div>
+      <div style={{ color:C.textMuted, fontSize:14, marginBottom:32 }}>{L({en:"Here's your business overview",ar:"إليك نظرة عامة على أعمالك"},lang)}</div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:16, marginBottom:32 }}>
+        {stats.map(s=>(
+          <div key={s.value} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:20, textAlign:"center" }}>
+            <div style={{ fontSize:28, marginBottom:8 }}>{s.icon}</div>
+            <div style={{ fontSize:22, fontWeight:700, color:C.accent, marginBottom:4 }}>{s.value}</div>
+            <div style={{ fontSize:12, color:C.textMuted }}>{L(s.label,lang)}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:24 }}>
+        <div style={{ fontWeight:600, marginBottom:16 }}>{L({en:"Recent Quote Requests",ar:"طلبات عروض الأسعار الأخيرة"},lang)}</div>
+        {[{name:"Al-Rashidi Family",event:"Wedding",date:"Aug 15",budget:"80K SAR"},{name:"TechCorp KSA",event:"Conference",date:"Jul 20",budget:"45K SAR"}].map((r,i)=>(
+          <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 0", borderBottom:`1px solid ${C.border}` }}>
+            <div>
+              <div style={{ fontWeight:500, fontSize:14 }}>{r.name}</div>
+              <div style={{ fontSize:12, color:C.textMuted }}>{r.event} · {r.date}</div>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+              <span style={{ fontSize:13, color:C.accent, fontWeight:600 }}>{r.budget}</span>
+              <Btn style={{ padding:"6px 16px", fontSize:12 }}>{L({en:"Respond",ar:"رد"},lang)}</Btn>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProvidersPage({ setPage, setSelectedProvider }) {
+  const { lang } = useLang();
+  const [filter,setFilter] = useState("All");
+  const types = ["All","Venue","Photography","Catering","Flowers","Entertainment","Bakery","Decoration","Videography"];
+  const filtered = PROVIDERS.filter(p => filter==="All" || p.type===filter);
+  return (
+    <div style={{ padding:32 }}>
+      <div style={{ fontSize:28, fontFamily:"'Cormorant Garamond',serif", fontWeight:700, marginBottom:20 }}>{L(T.providers,lang)}</div>
+      <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:28 }}>
+        {types.map(t=>(
+          <div key={t} onClick={()=>setFilter(t)}
+            style={{ padding:"8px 18px", borderRadius:20, fontSize:13, fontWeight:500, cursor:"pointer", transition:"all 0.2s",
+              background: filter===t ? C.accent : C.surface,
+              color: filter===t ? "#0a0a0f" : C.textMuted,
+              border:`1px solid ${filter===t ? C.accent : C.border}` }}>
+            {t}
+          </div>
+        ))}
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:20 }}>
+        {filtered.map(p=>(
+          <div key={p.id} onClick={()=>{setSelectedProvider(p);setPage("provider-detail");}}
+            style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:20, cursor:"pointer", transition:"all 0.2s" }}
+            onMouseEnter={e=>{e.currentTarget.style.borderColor=C.accent;e.currentTarget.style.transform="translateY(-2px)";}}
+            onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform="none";}}>
+            <div style={{ fontSize:36, marginBottom:12 }}>{p.avatar}</div>
+            <div style={{ fontWeight:600, fontSize:16, marginBottom:4 }}>{p.name}</div>
+            <div style={{ fontSize:12, color:C.accent, marginBottom:8 }}>{p.type} · {p.location}</div>
+            <div style={{ fontSize:13, color:C.textMuted, marginBottom:12 }}>⭐ {p.rating} ({p.reviews}) · {p.price}</div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+              {p.tags.map(tg=>(
+                <span key={tg} style={{ padding:"3px 10px", background:C.surfaceHi, borderRadius:12, fontSize:11, color:C.textMuted }}>{tg}</span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════
+   ROOT APP
+   ═══════════════════════════════════ */
+export default function App() {
+  const [lang, setLang] = useState("en");
+  const [screen, setScreen] = useState("welcome"); // welcome | signin | role | user-reg | supplier-reg
+  const [page, setPage] = useState("home");
+  const [user, setUser] = useState(null);
+  const [selectedProvider, setSelectedProvider] = useState(null);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+
+  const isRTL = lang === "ar";
+
+  const handleSuccess = (u) => { setUser(u); setScreen("app"); };
+
+  const navItems = user?.role === "supplier"
+    ? [
+        {id:"dashboard",label:L(T.dashboard,lang),icon:"📊"},
+        {id:"providers",label:L(T.providers,lang),icon:"🏢"},
+        {id:"home",label:L(T.explore,lang),icon:"✨"},
+      ]
+    : [
+        {id:"home",label:L(T.explore,lang),icon:"✨"},
+        {id:"providers",label:L(T.providers,lang),icon:"🏢"},
+        {id:"create",label:L(T.createEvent,lang),icon:"➕"},
+        {id:"my-events",label:L(T.myEvents,lang),icon:"📋"},
+      ];
+
+  return (
+    <LangCtx.Provider value={{ lang, setLang }}>
+      <style>{GS}</style>
+      <div dir={isRTL ? "rtl" : "ltr"} style={{ fontFamily: isRTL ? "'Noto Kufi Arabic',sans-serif" : "'DM Sans',sans-serif" }}>
+
+        {/* Lang toggle always visible */}
+        <button onClick={()=>setLang(l=>l==="en"?"ar":"en")}
+          style={{ position:"fixed", top:16, right:16, zIndex:1000, background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"8px 14px", color:C.text, fontSize:13, fontWeight:600 }}>
+          {lang==="en" ? "العربية" : "English"}
+        </button>
+
+        {/* AUTH FLOW */}
+        {screen==="welcome" && <WelcomeScreen onSignIn={()=>setScreen("signin")} onRegister={()=>setScreen("role")} />}
+        {screen==="signin" && <SignInScreen onBack={()=>setScreen("welcome")} onSuccess={handleSuccess} />}
+        {screen==="role" && <RoleSelectScreen onBack={()=>setScreen("welcome")} onSelect={r=>setScreen(r==="user"?"user-reg":"supplier-reg")} />}
+        {screen==="user-reg" && <UserRegisterScreen onBack={()=>setScreen("role")} onSuccess={handleSuccess} />}
+        {screen==="supplier-reg" && <SupplierRegisterScreen onBack={()=>setScreen("role")} onSuccess={handleSuccess} />}
+
+        {/* MAIN APP */}
+        {screen==="app" && (
+          <>
+            {/* Navbar */}
+            <nav style={{ position:"sticky", top:0, zIndex:100, background:`${C.bg}e8`, backdropFilter:"blur(20px)", borderBottom:`1px solid ${C.border}`, padding:"0 32px", display:"flex", alignItems:"center", justifyContent:"space-between", height:64 }}>
+              <div style={{ fontSize:22, fontFamily: isRTL ? "'Noto Kufi Arabic',sans-serif" : "'Cormorant Garamond',serif", fontWeight:700, color:C.accent }}>
+                {T.brandEn} <span style={{ fontFamily:"'Noto Kufi Arabic',sans-serif", fontSize:18 }}>{T.brandAr}</span>
+              </div>
+              <div style={{ display:"flex", gap:4 }}>
+                {navItems.map(item=>(
+                  <button key={item.id} onClick={()=>setPage(item.id)}
+                    style={{ padding:"8px 16px", borderRadius:10, background: page===item.id ? C.accentDim : "transparent",
+                      color: page===item.id ? C.accent : C.textMuted,
+                      fontSize:13, fontWeight:600, display:"flex", alignItems:"center", gap:6, transition:"all 0.2s" }}>
+                    <span style={{ fontSize:14 }}>{item.icon}</span><span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+              <div style={{ position:"relative" }}>
+                <div onClick={()=>setShowProfileMenu(m=>!m)}
+                  style={{ width:38, height:38, borderRadius:12, background:C.accentDim, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", border:`1px solid ${C.accent}40`, fontSize:16 }}>
+                  👤
+                </div>
+                {showProfileMenu && (
+                  <div style={{ position:"absolute", right:0, top:46, background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:16, minWidth:200, zIndex:200 }}>
+                    <div style={{ fontWeight:600, fontSize:14, marginBottom:2 }}>{user?.businessName || user?.name}</div>
+                    <div style={{ fontSize:12, color:C.textMuted, marginBottom:12 }}>{user?.email}</div>
+                    {user?.role==="supplier" && <div style={{ fontSize:11, color:C.accent, fontWeight:600, marginBottom:12, padding:"3px 10px", background:C.accentDim, borderRadius:8, display:"inline-block" }}>SUPPLIER</div>}
+                    <div onClick={()=>{ setUser(null); setScreen("welcome"); setShowProfileMenu(false); }}
+                      style={{ fontSize:13, color:C.error, cursor:"pointer", padding:"8px 0", borderTop:`1px solid ${C.border}`, marginTop:4 }}>
+                      {L(T.signOut,lang)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </nav>
+            {showProfileMenu && <div onClick={()=>setShowProfileMenu(false)} style={{ position:"fixed", inset:0, zIndex:99 }} />}
+
+            {/* Pages */}
+            <div style={{ position:"relative", zIndex:1 }}>
+              {page==="home" && <HomePage setPage={setPage} setSelectedProvider={setSelectedProvider} />}
+              {page==="providers" && <ProvidersPage setPage={setPage} setSelectedProvider={setSelectedProvider} />}
+              {page==="provider-detail" && <ProviderDetailPage provider={selectedProvider} setPage={setPage} user={user} />}
+              {page==="create" && <CreateEventPage setPage={setPage} user={user} />}
+              {page==="my-events" && <MyEventsPage setPage={setPage} />}
+              {page==="dashboard" && <SupplierDashboard user={user} />}
+            </div>
+          </>
+        )}
+      </div>
+    </LangCtx.Provider>
+  );
+}
